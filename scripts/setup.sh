@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Provision script for new MacBooks (Apple Silicon) and optional Linux support.
 # This script backs up existing configurations, installs Homebrew (or apt on Linux),
-# and sets up a development environment with essential tools.
-# All configurations are for Bash; Zsh-related setup has been removed.
+# installs Xcode Command Line Tools on Apple Silicon, and sets up a development
+# environment with essential tools for Bash users.
+#
+# Note: gdb is skipped on Apple Silicon (arm64) and Xcode Command Line Tools
+# (which include lldb) will be installed instead.
 
 set -euo pipefail
 
@@ -83,12 +86,28 @@ install_homebrew() {
 }
 
 ######################################
-# 4. Install Essential Tools
+# 4. Install Xcode Command Line Tools on Apple Silicon
+######################################
+install_xcode_cli() {
+  if [[ $(uname -s) == "Darwin" && $(uname -m) == "arm64" ]]; then
+    if ! xcode-select -p &>/dev/null; then
+      echo "Xcode Command Line Tools not found. Initiating installation..."
+      xcode-select --install
+      echo "Please complete the Xcode Command Line Tools installation."
+      read -rp "Press [Enter] to continue once the installation is complete..."
+    else
+      echo "Xcode Command Line Tools are already installed."
+    fi
+  fi
+}
+
+######################################
+# 5. Install Essential Tools
 ######################################
 install_tools() {
   if [[ $(uname -s) == "Darwin" ]]; then
+    # Define a list of formulae to install via Homebrew.
     brew_apps=(
-      "gcc-arm-none-eabi"
       "openocd"
       "qemu"
       "git"
@@ -101,12 +120,19 @@ install_tools() {
       "htop"
     )
 
+    # Define a list of cask applications to install via Homebrew Cask.
     cask_apps=(
       "iterm2"
       "docker"
+      "gcc-arm-embedded"
     )
 
     for app in "${brew_apps[@]}"; do
+      # Skip gdb on Apple Silicon because its formula requires x86_64.
+      if [[ "$app" == "gdb" && $(uname -m) == "arm64" ]]; then
+        echo "Skipping installation of gdb on Apple Silicon (arm64) as it's not supported."
+        continue
+      fi
       if ! is_brew_installed "$app"; then
         echo "Installing $app via Homebrew..."
         brew install "$app"
@@ -142,7 +168,7 @@ install_tools() {
 }
 
 ######################################
-# 5. Python Environment Setup
+# 6. Python Environment Setup
 ######################################
 setup_python() {
   if [[ $(uname -s) == "Darwin" ]]; then
@@ -157,12 +183,12 @@ setup_python() {
   fi
 
   echo "Installing common Python packages (system-wide)..."
-  pip3 install --upgrade pip
-  pip3 install numpy scipy matplotlib pandas jupyterlab
+  pip install --upgrade pip
+  pip install numpy scipy matplotlib pandas jupyterlab
 }
 
 ######################################
-# 6. Neovim Setup
+# 7. Neovim Setup
 ######################################
 setup_neovim() {
   echo "Setting up Neovim..."
@@ -263,7 +289,7 @@ nnoremap <C-k> <C-w>k
 nnoremap <C-l> <C-w>l
 EOF
 
-  # Install vim-plug for Neovim if it is not already installed.
+  # Install vim-plug for Neovim if not already installed.
   if [[ ! -f "$HOME/.local/share/nvim/site/autoload/plug.vim" ]]; then
     echo "Installing vim-plug for Neovim..."
     sh -c "curl -fLo \"$HOME/.local/share/nvim/site/autoload/plug.vim\" --create-dirs \
@@ -275,11 +301,12 @@ EOF
 }
 
 ######################################
-# 7. Main Execution
+# 8. Main Execution
 ######################################
 main() {
   backup_configs         # Backup current configuration files.
   install_homebrew       # Install Homebrew (macOS) and update PATH in ~/.bash_profile.
+  install_xcode_cli      # Install Xcode Command Line Tools on Apple Silicon.
   install_tools          # Install essential tools via Homebrew (or apt on Linux).
   setup_python           # Install Python and common packages.
   setup_neovim           # Set up Neovim configuration and install plugins.
