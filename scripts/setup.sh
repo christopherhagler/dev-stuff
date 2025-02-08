@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Provision script for new MacBooks (Apple Silicon) and optional Linux support.
-# This script backs up existing configs, installs Homebrew (or apt on Linux),
+# This script backs up existing configurations, installs Homebrew (or apt on Linux),
 # and sets up a development environment with essential tools.
+# All configurations are for Bash; Zsh-related setup has been removed.
 
 set -euo pipefail
 
@@ -9,7 +10,7 @@ set -euo pipefail
 # 1. Helper Functions
 ######################################
 
-# Check if Homebrew is installed (available in $PATH).
+# Check if Homebrew is available in PATH.
 is_brew_available() {
   command -v brew &>/dev/null
 }
@@ -21,27 +22,24 @@ is_brew_installed() {
 
 # Check if an application (.app bundle) is manually installed (macOS only).
 is_manually_installed() {
-  # mdfind can fail if indexing is off or if the app is installed elsewhere.
   mdfind "kMDItemContentType == 'com.apple.application-bundle' && kMDItemFSName == '$1.app'" &>/dev/null
 }
 
 ######################################
-# 2. Backup Existing Configs
+# 2. Backup Existing Configurations
 ######################################
 backup_configs() {
   echo "Backing up existing configurations..."
   timestamp=$(date +%Y%m%d%H%M%S)
-  backup_dir=~/backup_configs_$timestamp
+  backup_dir="$HOME/backup_configs_$timestamp"
   mkdir -p "$backup_dir"
 
-  # List of configurations to back up
+  # List of configuration files/directories to back up.
   configs=(
-    ".zshrc"
-    ".oh-my-zsh"
-    ".config/nvim"
     ".bashrc"
     ".gitconfig"
     ".tmux.conf"
+    ".config/nvim"
   )
 
   for config in "${configs[@]}"; do
@@ -68,18 +66,14 @@ install_homebrew() {
     if ! is_brew_available; then
       echo "Installing Homebrew..."
       /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-      # If Apple Silicon (arm64), ensure /opt/homebrew is in your PATH.
       if [[ $(uname -m) == "arm64" ]]; then
         echo "Detected Apple Silicon (arm64). Adding Homebrew to PATH..."
-        # Append to ~/.zprofile so it is evaluated for login shells
-        echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$HOME/.zprofile"
-        # Evaluate now for the current session
+        # Append the Homebrew shell environment initialization to your Bash profile.
+        echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$HOME/.bash_profile"
         eval "$(/opt/homebrew/bin/brew shellenv)"
       else
-        # Intel fallback
-        echo "Detected Intel CPU (x86_64). Ensuring /usr/local/bin/brew is in PATH..."
-        echo 'eval "$(/usr/local/bin/brew shellenv)"' >> "$HOME/.zprofile"
+        echo "Detected Intel CPU (x86_64). Ensuring Homebrew is in PATH..."
+        echo 'eval "$(/usr/local/bin/brew shellenv)"' >> "$HOME/.bash_profile"
         eval "$(/usr/local/bin/brew shellenv)"
       fi
     else
@@ -103,7 +97,6 @@ install_tools() {
       "neovim"
       "python"
       "tmux"
-      "zsh"
       "fzf"
       "htop"
     )
@@ -143,18 +136,16 @@ install_tools() {
       neovim \
       python3 \
       tmux \
-      zsh \
       fzf \
       htop
   fi
 }
 
 ######################################
-# 5. Python Environment
+# 5. Python Environment Setup
 ######################################
 setup_python() {
   if [[ $(uname -s) == "Darwin" ]]; then
-    # Homebrew python is part of brew_apps; double-check here:
     if ! is_brew_installed "python"; then
       echo "Installing Python via Homebrew..."
       brew install python
@@ -171,43 +162,13 @@ setup_python() {
 }
 
 ######################################
-# 6. Zsh + Oh My Zsh
-######################################
-configure_zsh() {
-  if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-    echo "Installing Oh My Zsh..."
-    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-    
-    if [[ -n "$(command -v zsh)" ]]; then
-      chsh -s "$(command -v zsh)"
-    fi
-  else
-    echo "Oh My Zsh is already installed."
-  fi
-
-  local theme_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
-  if [[ ! -d "$theme_dir" ]]; then
-    echo "Installing Powerlevel10k theme..."
-    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$theme_dir"
-    
-    if [[ $(uname -s) == "Darwin" ]]; then
-      sed -i '' 's/^ZSH_THEME=".*"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' "$HOME/.zshrc"
-    else
-      sed -i 's/^ZSH_THEME=".*"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' "$HOME/.zshrc"
-    fi
-  else
-    echo "Powerlevel10k theme already installed."
-  fi
-}
-
-######################################
-# 7. Neovim Setup
+# 6. Neovim Setup
 ######################################
 setup_neovim() {
   echo "Setting up Neovim..."
   mkdir -p "$HOME/.config/nvim"
 
-  cat <<EOF > "$HOME/.config/nvim/init.vim"
+  cat <<'EOF' > "$HOME/.config/nvim/init.vim"
 call plug#begin('~/.config/nvim/plugged')
 Plug 'tpope/vim-sensible'
 Plug 'neoclide/coc.nvim', {'branch': 'release'}
@@ -218,7 +179,6 @@ Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
 Plug 'preservim/tagbar'
 Plug 'ryanoasis/vim-devicons'
-" Single ALE plugin (dense-analysis is the official one)
 Plug 'dense-analysis/ale'
 Plug 'ludovicchabant/vim-gutentags'
 Plug 'critiqjo/lldb.nvim'
@@ -232,14 +192,14 @@ Plug 'nvie/vim-flake8'
 Plug 'davidhalter/jedi-vim'
 call plug#end()
 
-" NERDTree config
+" NERDTree configuration
 let NERDTreeShowHidden=1
 autocmd vimenter * NERDTree
 autocmd StdinReadPre * let s:std_in=1
 autocmd VimEnter * if !argc() && !exists('s:std_in') | NERDTree | endif
 nmap <leader>n :NERDTreeToggle<CR>
 
-" Airline
+" Airline configuration
 let g:airline#extensions#tabline#enabled = 1
 
 " ALE settings
@@ -252,23 +212,23 @@ let g:ale_python_black_executable = 'black'
 " Coc settings
 let g:coc_global_extensions = ['coc-json', 'coc-snippets', 'coc-pyright']
 
-" Tagbar
+" Tagbar mapping
 nmap <F8> :TagbarToggle<CR>
 
-" FZF
+" FZF mapping
 nnoremap <silent> <C-p> :Files<CR>
 
-" Syntax
+" Syntax settings for assembly files
 autocmd BufRead,BufNewFile *.asm set syntax=nasm
 autocmd BufRead,BufNewFile *.s set syntax=nasm
 
-" Syntastic
+" Syntastic settings
 let g:syntastic_c_checkers = ['gcc']
 
-" Vimspector
+" Vimspector mappings
 let g:vimspector_enable_mappings = 'HUMAN'
 
-" Gutentags
+" Gutentags settings
 let g:gutentags_ctags_executable = 'ctags'
 let g:gutentags_project_root = ['.git', '.hg', '.svn', '.bzr', '_darcs', 'build']
 let g:gutentags_add_default_project_roots = 0
@@ -277,7 +237,7 @@ let g:gutentags_generate_on_missing = 1
 let g:gutentags_generate_on_write = 1
 let g:gutentags_generate_on_empty_buffer = 1
 
-" Basic settings
+" Basic Neovim settings
 set clipboard=unnamedplus
 syntax on
 filetype plugin indent on
@@ -289,45 +249,43 @@ set tabstop=4
 set softtabstop=4
 set mouse=a
 
-" Leader + some Telescope mappings
+" Telescope mappings
 let mapleader = "\<Space>"
 nnoremap <leader>ff :Telescope find_files<CR>
 nnoremap <leader>fg :Telescope live_grep<CR>
 nnoremap <leader>fb :Telescope buffers<CR>
 nnoremap <leader>fh :Telescope help_tags<CR>
 
-" Window navigation
+" Window navigation mappings
 nnoremap <C-h> <C-w>h
 nnoremap <C-j> <C-w>j
 nnoremap <C-k> <C-w>k
 nnoremap <C-l> <C-w>l
 EOF
 
-  # Install vim-plug if not already present; then run PlugInstall
+  # Install vim-plug for Neovim if it is not already installed.
   if [[ ! -f "$HOME/.local/share/nvim/site/autoload/plug.vim" ]]; then
     echo "Installing vim-plug for Neovim..."
-    sh -c "curl -fLo \"$HOME/.local/share/nvim/site/autoload/plug.vim\" --create-dirs \\
+    sh -c "curl -fLo \"$HOME/.local/share/nvim/site/autoload/plug.vim\" --create-dirs \
       https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim"
   fi
 
   echo "Installing Neovim plugins..."
-  nvim +PlugInstall +qall || true  # Continue even if some plugins fail
+  nvim +PlugInstall +qall || true  # Continue even if some plugins fail.
 }
 
 ######################################
-# 8. Main Execution
+# 7. Main Execution
 ######################################
 main() {
-  backup_configs         # Backup first to avoid overwriting user config
-  install_homebrew       # On macOS, install Homebrew if missing; handle Apple Silicon path
-  install_tools          # Install essential tools via Homebrew (or apt on Linux)
-  setup_python           # Install Python and common packages
-  configure_zsh          # Install Oh My Zsh and Powerlevel10k
-  setup_neovim           # Set up Neovim configuration and plugins
+  backup_configs         # Backup current configuration files.
+  install_homebrew       # Install Homebrew (macOS) and update PATH in ~/.bash_profile.
+  install_tools          # Install essential tools via Homebrew (or apt on Linux).
+  setup_python           # Install Python and common packages.
+  setup_neovim           # Set up Neovim configuration and install plugins.
 
   echo ""
-  echo "All done! If this is your first Homebrew installation on Apple Silicon,"
-  echo "open a new terminal or run 'exec zsh' to update your PATH."
+  echo "All done! Please open a new terminal or source your ~/.bash_profile to update your PATH."
 }
 
 main
